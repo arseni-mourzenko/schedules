@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eE
+
+if [ ! -d bin ]; then
+    mkdir bin
+fi
+
+pushd bin
+
+cmake -DCMAKE_BUILD_TYPE=Release ..
+
+#cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-pg -DCMAKE_EXE_LINKER_FLAGS=-pg -DCMAKE_SHARED_LINKER_FLAGS=-pg ..
+
+make -j 8
+popd
