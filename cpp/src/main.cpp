@@ -13,7 +13,7 @@
 
 inline std::map<int, int> match(std::string &type, pqxx::work &db) {
     if (type == "plain") {
-        return avx2::Matcher().match(db);
+        return plain::Matcher().match(db);
     }
 
     if (type == "sse") {
