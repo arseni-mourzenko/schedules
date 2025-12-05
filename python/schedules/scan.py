@@ -111,7 +111,12 @@ def _count_map_reduce_one(skip: int, take: int) -> dict[int, int]:
 
 
 def count_map_reduce(connection: DatabaseConnection) -> dict[int, int]:
-    arguments = [(page * 1000, 1000) for page in range(5)]
+    total_users = 5000
+    pages = 5
+    assert total_users % pages == 0
+    page_size = int(total_users / pages)
+
+    arguments = [(page * page_size, page_size) for page in range(pages)]
 
     with multiprocessing.Pool() as pool:
         results = pool.starmap(_count_map_reduce_one, arguments)
@@ -150,7 +155,12 @@ def count_map_reduce_file(connection: DatabaseConnection) -> dict[int, int]:
     with open(file_path, 'wb') as f:
         pickle.dump(users_slots, f)
 
-    arguments = [(file_path, page * 1000, 1000) for page in range(5)]
+    total_users = 5000
+    pages = 5
+    assert total_users % pages == 0
+    page_size = int(total_users / pages)
+
+    arguments = [(file_path, page * page_size, page_size) for page in range(pages)]
     print(f'Preparation: {(time.time() - start_time):.3f} seconds.')
 
     with multiprocessing.Pool() as pool:
