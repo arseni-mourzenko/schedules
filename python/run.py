@@ -17,7 +17,6 @@ if __name__ == '__main__':
         'plain': schedules.count_plain,
         'pandas': schedules.count_pandas,
         'mapreduce': schedules.count_map_reduce,
-        'mapreduce-shared': schedules.count_map_reduce_shared_memory,
         'mapreduce-file': schedules.count_map_reduce_file,
         'indb': schedules.count_in_database,
     }[run_type]

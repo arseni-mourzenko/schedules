@@ -1,2 +1,2 @@
 from .create_data import create_e, create_events, create_u, create_users, reset_database
-from .scan import count_plain, count_pandas, count_map_reduce, load_events, load_users, count_in_database, count_map_reduce_shared_memory, count_map_reduce_file
+from .scan import count_plain, count_pandas, count_map_reduce, load_events, load_users, count_in_database, count_map_reduce_file

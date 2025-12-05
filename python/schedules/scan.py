@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 
+import cProfile
 import dataclasses
 import multiprocessing
-import multiprocessing.shared_memory
 import numpy
 import pandas
+import pickle
+import pstats
 import psycopg
-import typing
 import time
+import typing
 
 
 type DatabaseConnection = psycopg.connection.Connection
@@ -121,104 +123,32 @@ def count_map_reduce(connection: DatabaseConnection) -> dict[int, int]:
     return combined
 
 
-def _count_map_reduce_shared_memory_one(shm_name: str, skip: int, take: int) -> dict[int, int]:
-    start_time = time.time()
-    #with cProfile.Profile() as profile:
-    slot_length = 42  # 42 bytes matches 336 bits.
-    shm = multiprocessing.shared_memory.SharedMemory(name=shm_name)
-    buffer = bytes(shm.buf)
-    shm.close()
-
-    with psycopg.connect(conninfo, connect_timeout=2) as connection:
-        events_counters = {}
-        for e in load_events_page(connection, skip, take):
-            event_slot = e.slots.to_bytes(slot_length)
-            matches = 0
-            for user_number in range(15000):
-                buffer_start_index = user_number * slot_length
-                position = 0
-                is_match = True
-                for event_byte in event_slot:
-                    user_byte = buffer[buffer_start_index + position]
-                    if event_byte & user_byte != event_byte:
-                        is_match = False
-                        break
-                    position += 1
-
-                if is_match:
-                    matches += 1
-
-            events_counters[e.id] = matches
-
-    print(f'One: {(time.time() - start_time):.3f} seconds.')
-    #pstats.Stats(profile).strip_dirs().sort_stats(pstats.SortKey.CUMULATIVE).print_stats()
-    return events_counters
-
-
-def count_map_reduce_shared_memory(connection: DatabaseConnection) -> dict[int, int]:
-    slot_length = 42  # 42 bytes matches 336 bits.
-    shm = multiprocessing.shared_memory.SharedMemory(create=True, size=slot_length * 15000)
-    position = 0
-    for user_slot in load_users_slots(connection):
-        shm.buf[position:position + slot_length] = user_slot.to_bytes(slot_length)
-        position += slot_length
-
-    arguments = [(shm.name, page * 1000, 1000) for page in range(5)]
-
-    with multiprocessing.Pool() as pool:
-        results = pool.starmap(_count_map_reduce_shared_memory_one, arguments)
-
-    combined = {}
-    for result in results:
-        combined |= result
-
-    shm.close()
-    shm.unlink()
-    return combined
-
-
 def _count_map_reduce_file_one(file_path: str, skip: int, take: int) -> dict[int, int]:
-    t1 = time.time()
-    slot_length = 42  # 42 bytes matches 336 bits.
+    #with cProfile.Profile() as profile:
     with open(file_path, 'rb') as f:
-        buffer = f.read()
-
-    t2 = time.time()
+        users_slots = pickle.load(f)
 
     with psycopg.connect(conninfo, connect_timeout=2) as connection:
-        t3 = time.time()
-        events_counters = {}
-        for e in load_events_page(connection, skip, take):
-            event_slot = e.slots.to_bytes(slot_length)
-            matches = 0
-            for user_number in range(15000):
-                buffer_start_index = user_number * slot_length
-                position = 0
-                is_match = True
-                for event_byte in event_slot:
-                    user_byte = buffer[buffer_start_index + position]
-                    if event_byte & user_byte != event_byte:
-                        is_match = False
-                        break
-                    position += 1
+        events = pandas.DataFrame(load_events_page(connection, skip, take))
+        events.set_index('id', inplace=True)
 
-                if is_match:
-                    matches += 1
+        def count(event_slot):
+            return numpy.sum(event_slot & users_slots == event_slot)
 
-            events_counters[e.id] = matches
+        events['matches'] = events['slots'].apply(count)
+        return events.to_dict()['matches']
 
-    t4 = time.time()
-    print(f'File: loading: {(t2 - t1):.3f}; connecting: {(t3 - t2):.3f}; matching: {(t4 - t3):.3f}.')
+    #stats.Stats(profile).strip_dirs().sort_stats(pstats.SortKey.CUMULATIVE).print_stats()
     return events_counters
 
 
 def count_map_reduce_file(connection: DatabaseConnection) -> dict[int, int]:
+    #with cProfile.Profile() as profile:
     start_time = time.time()
-    slot_length = 42  # 42 bytes matches 336 bits.
+    users_slots = numpy.fromiter(load_users_slots(connection), dtype=object)
     file_path = '/tmp/schedules_users'
     with open(file_path, 'wb') as f:
-        for user_slot in load_users_slots(connection):
-            f.write(user_slot.to_bytes(slot_length))
+        pickle.dump(users_slots, f)
 
     arguments = [(file_path, page * 1000, 1000) for page in range(5)]
     print(f'Preparation: {(time.time() - start_time):.3f} seconds.')
@@ -230,6 +160,7 @@ def count_map_reduce_file(connection: DatabaseConnection) -> dict[int, int]:
     for result in results:
         combined |= result
 
+    #pstats.Stats(profile).strip_dirs().sort_stats(pstats.SortKey.CUMULATIVE).print_stats()
     return combined
 
 
